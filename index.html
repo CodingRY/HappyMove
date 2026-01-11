@@ -2,21 +2,70 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Happy Move - Final Fix</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Happy Move Mobile</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
     
     <style>
-        body { font-family: 'Kanit', sans-serif; text-align: center; background: #f0f7f4; padding: 20px; }
-        .card { background: white; padding: 25px; border-radius: 25px; box-shadow: 0 8px 20px rgba(0,0,0,0.1); display: inline-block; width: 100%; max-width: 450px; }
-        h1 { color: #2ecc71; margin-bottom: 10px; }
-        #canvas-container { position: relative; width: 300px; height: 300px; margin: 15px auto; border: 5px solid #2ecc71; border-radius: 15px; background: #000; }
-        .counter { font-size: 4.5rem; font-weight: bold; color: #2c3e50; margin: 10px 0; }
-        .status-bar { background: #f8f9fa; padding: 12px; border-radius: 12px; margin-bottom: 15px; }
-        button { background: #2ecc71; color: white; border: none; padding: 15px 40px; border-radius: 50px; font-size: 1.2rem; cursor: pointer; transition: 0.3s; }
-        button:hover { background: #27ae60; }
+        /* ปรับแต่งให้รองรับมือถือ */
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { 
+            font-family: 'Kanit', sans-serif; 
+            margin: 0; 
+            padding: 10px; 
+            background: #f0f7f4; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            min-height: 100vh;
+        }
+        .card { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 20px; 
+            box-shadow: 0 8px 20px rgba(0,0,0,0.1); 
+            width: 100%; 
+            max-width: 400px; /* ขนาดกว้างสุดสำหรับมือถือจอใหญ่ */
+            text-align: center;
+        }
+        h1 { color: #2ecc71; font-size: 1.5rem; margin: 0 0 10px 0; }
+        p { font-size: 0.9rem; color: #666; margin-bottom: 15px; }
+
+        /* ปรับ Canvas ให้เป็น Responsive */
+        #canvas-container { 
+            position: relative; 
+            width: 100%; /* กว้างเต็ม Card */
+            aspect-ratio: 1 / 1; /* รักษาทรงจตุรัส */
+            margin: 0 auto 15px auto; 
+            border: 4px solid #2ecc71; 
+            border-radius: 15px; 
+            background: #000; 
+            overflow: hidden;
+        }
+        canvas { 
+            width: 100% !important; 
+            height: 100% !important; 
+            object-fit: cover; 
+        }
+
+        .counter { font-size: 3.5rem; font-weight: bold; color: #2c3e50; line-height: 1; margin-bottom: 10px; }
+        .status-bar { background: #f8f9fa; padding: 10px; border-radius: 12px; margin-bottom: 15px; font-size: 0.9rem; }
+        
+        button { 
+            background: #2ecc71; 
+            color: white; 
+            border: none; 
+            width: 100%; /* ปุ่มกว้างเต็มหน้าจอ */
+            padding: 15px; 
+            border-radius: 50px; 
+            font-size: 1.1rem; 
+            cursor: pointer; 
+            font-weight: bold;
+            box-shadow: 0 4px 10px rgba(46, 204, 113, 0.3);
+        }
+        button:active { transform: scale(0.98); }
     </style>
 </head>
 <body>
@@ -30,45 +79,37 @@
         </div>
 
         <div class="counter">
-            <span id="count-number">0</span><span style="font-size: 1.5rem; color: #ccc;"> / 5</span>
+            <span id="count-number">0</span><span style="font-size: 1.2rem; color: #ccc;"> / 5</span>
         </div>
 
         <div class="status-bar">
             <div>สถานะ: <span id="status-text" style="color: #2ecc71; font-weight: bold;">รอการเริ่ม...</span></div>
-            <div style="font-size: 0.8rem; color: #95a5a6;">ความเชื่อมั่น: <span id="confidence-text">0%</span></div>
+            <div style="font-size: 0.75rem; color: #95a5a6;">ความเชื่อมั่น: <span id="confidence-text">0%</span></div>
         </div>
 
-        <button id="start-btn" onclick="init()">เริ่มเปิดกล้อง</button>
+        <button id="start-btn" onclick="init()">เริ่มใช้งานกล้อง</button>
     </div>
 
     <script>
-        // URL จากโมเดลที่คุณเทรน (neck / nomal)
         const URL = "https://teachablemachine.withgoogle.com/models/fpJDHbtga/";
-        let model, webcam, ctx, labelContainer, maxPredictions;
+        let model, webcam, ctx, isRunning = false;
         let count = 0;
         let lastClass = "";
-        let isRunning = false;
 
         async function init() {
             const btn = document.getElementById("start-btn");
-            btn.innerText = "กำลังเชื่อมต่อระบบ...";
+            btn.innerText = "กำลังเข้าถึงกล้อง...";
             btn.disabled = true;
 
             try {
-                const modelURL = URL + "model.json";
-                const metadataURL = URL + "metadata.json";
-
-                // 1. โหลดโมเดล Pose
-                model = await tmPose.load(modelURL, metadataURL);
+                model = await tmPose.load(URL + "model.json", URL + "metadata.json");
                 
-                // 2. ตั้งค่ากล้อง
-                const size = 300;
-                const flip = true; 
-                webcam = new tmPose.Webcam(size, size, flip);
+                // สำหรับมือถือ แนะนำขนาด 300 หรือ 400
+                const size = 400; 
+                webcam = new tmPose.Webcam(size, size, true); // true = flip กล้องหน้า
                 await webcam.setup(); 
                 await webcam.play();
                 
-                // 3. เตรียม Canvas สำหรับวาดภาพและโครงกระดูก
                 const canvas = document.getElementById("canvas");
                 canvas.width = size; canvas.height = size;
                 ctx = canvas.getContext("2d");
@@ -76,78 +117,62 @@
                 btn.style.display = "none";
                 isRunning = true;
                 window.requestAnimationFrame(loop);
-                
             } catch (e) {
-                console.error(e);
-                alert("เกิดปัญหา: " + e.message);
-                btn.innerText = "ลองใหม่อีกครั้ง";
+                alert("กรุณาอนุญาตให้เข้าถึงกล้อง");
                 btn.disabled = false;
+                btn.innerText = "ลองใหม่อีกครั้ง";
             }
         }
 
-        async function loop(timestamp) {
+        async function loop() {
             if (isRunning) {
-                webcam.update(); 
+                webcam.update();
                 await predict();
                 window.requestAnimationFrame(loop);
             }
         }
 
         async function predict() {
-            // ทำนายท่าทาง
             const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
             const prediction = await model.predict(posenetOutput);
 
-            // วาดภาพจากกล้องลงบน Canvas
             ctx.drawImage(webcam.canvas, 0, 0);
-
-            // วาดจุดและเส้นโครงกระดูก (ช่วยให้รู้ว่ากล้องทำงานอยู่)
             if (pose) {
                 tmPose.drawKeypoints(pose.keypoints, 0.8, ctx);
                 tmPose.drawSkeleton(pose.keypoints, 0.8, ctx);
             }
 
-            // หา Class ที่มีความเป็นไปได้สูงสุด
             let bestClass = "";
             let highestProb = 0;
-            for (let i = 0; i < prediction.length; i++) {
-                if (prediction[i].probability > highestProb) {
-                    highestProb = prediction[i].probability;
-                    bestClass = prediction[i].className;
+            prediction.forEach(p => {
+                if (p.probability > highestProb) {
+                    highestProb = p.probability;
+                    bestClass = p.className;
                 }
-            }
+            });
 
-            // อัปเดต UI
             document.getElementById("status-text").innerText = bestClass;
             document.getElementById("confidence-text").innerText = (highestProb * 100).toFixed(0) + "%";
 
-            // ตรรกะการนับ (ใช้ชื่อ neck และ nomal ตามที่คุณตั้งไว้)
-            if (highestProb > 0.85) { // ความแม่นยำ 85% ขึ้นไป
+            if (highestProb > 0.85) {
                 if (lastClass !== bestClass) {
-                    // ถ้านับการเปลี่ยนจากท่าปกติ (nomal) เป็นท่าเอียงคอ (neck)
                     if (bestClass === "neck") { 
                         count++;
                         document.getElementById("count-number").innerText = count;
-
                         if (count >= 5) {
                             isRunning = false;
                             setTimeout(() => {
-                                alert("🎉 เก่งมาก! คุณบริหารคอ (neck) ครบ 5 ครั้งแล้ว");
-                                resetCount();
+                                alert("🎉 ครบ 5 ครั้งแล้ว!");
+                                count = 0;
+                                document.getElementById("count-number").innerText = "0";
+                                isRunning = true;
+                                window.requestAnimationFrame(loop);
                             }, 100);
                         }
                     }
                     lastClass = bestClass;
                 }
             }
-        }
-
-        function resetCount() {
-            count = 0;
-            lastClass = "";
-            document.getElementById("count-number").innerText = "0";
-            isRunning = true;
-            window.requestAnimationFrame(loop);
         }
     </script>
 </body>
